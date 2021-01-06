@@ -1,0 +1,44 @@
+﻿@page "/"
+@namespace CorbetterMaths.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+@{
+	Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>CorbetterMaths</title>
+	<base href="~/" />
+	<link rel="stylesheet" href="css/Fomantic-UI/semantic.min.css" />
+	<link href="css/site.css" rel="stylesheet" />
+</head>
+<body>
+<script src="//code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<app>
+	<component type="typeof(App)" render-mode="Server"/>
+</app>
+
+<div id="blazor-error-ui">
+	<environment include="Staging,Production">
+		An error has occurred. This application may no longer respond until reloaded.
+	</environment>
+	<environment include="Development">
+		An unhandled exception has occurred. See browser dev tools for details.
+	</environment>
+	<a href="" class="reload">Reload</a>
+	<a class="dismiss">🗙</a>
+</div>
+	
+<script src="css/Fomantic-UI/semantic.min.js"></script>
+<script>
+	function init() {
+		$(".ui.dropdown").dropdown();
+		$(".ui.accordion").accordion();
+	}
+</script>
+<script src="_framework/blazor.server.js"></script>
+</body>
+</html>

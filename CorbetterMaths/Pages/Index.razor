@@ -1,0 +1,157 @@
+﻿@page "/"
+@using System.Text
+@using System.Xml
+@using System.Xml.Linq
+@using System.Resources
+@inject HttpClient Http
+
+<h1 class="ui header">Cor<span style="color: red">better</span> Maths</h1>
+<h2>
+	A better website for
+	<em>
+		<a href="//corbettmaths.com/contents">
+			Corbett Maths
+			<i class="external square alternate icon"></i>
+		</a>
+	</em>
+</h2>
+
+@if (!_content.Any())
+{
+	<p>Currently loading and processing CorbettMaths content. This shouldn't take long</p>
+	<div class="ui active inline loader"></div>
+}
+else
+{
+	<div class="ui input" style="margin-right: 1rem">
+		<input type="text" placeholder="Enter a video number" @bind="_searchTerm">
+	</div>
+
+	<button class="ui icon labeled button" @onclick="Search">
+		<i class="search icon" />
+		Search Content
+	</button>
+
+	if (_itemToShow != null)
+	{
+		<p>Here's your delicious maths video, served hot and fresh from the oven.</p>
+
+		<div class="ui card">
+			<div class="content">
+				<div class="header">@_itemToShow.Topic</div>
+				<div class="meta">Video #@_itemToShow.Number</div>
+				<div class="description">
+					<div class="ui icon buttons">
+						<a class="ui button" data-tooltip="Watch Video" href="@_itemToShow.VideoUri" target="_blank">
+							<i class="play icon"/>
+						</a>
+						<a class="ui button" data-tooltip="Practice Questions" href="@_itemToShow.PracticeQuestionsUri" download>
+							<i class="pencil alternate icon"/>
+						</a>
+						<a class="ui button" data-tooltip="Textbook Exercise" href="@_itemToShow.TextbookExerciseUri" download>
+							<i class="book open icon"/>
+						</a>
+					</div>
+				</div>
+			</div>
+		</div>
+	}
+}
+
+
+@code {
+
+#pragma warning disable 649 // it's assigned via @bind=""
+	private string _searchTerm;
+#pragma warning restore 649
+
+	private Content _itemToShow = null;
+
+	private void Search() => _itemToShow = _content.First(c => c.Number == _searchTerm);
+
+	// Here be dragons; proceed at the risk of your own sanity
+
+	private Content[] _content = new Content[0];
+
+	protected override async Task OnInitializedAsync() => await ProcessData();
+
+	private async Task ProcessData() => _content = ParseContentPage(await GetContentList());
+
+	private async Task<string> GetContentList() => await Http.GetStringAsync(Http.BaseAddress);
+
+	private Content[] ParseContentPage(string html)
+	{
+		var xml = Majestic12ToXml.ConvertNodesToXml(Encoding.UTF8.GetBytes(html)).ToArray();
+
+		var elements = ((XElement)xml[0]).DescendantsAndSelf().ToArray();
+
+		// ReSharper I really dont care right now
+		// ReSharper disable once PossibleNullReferenceException
+		var content = (
+						  from x in elements
+						  where x.Attribute("class")?.Value == "entry-content"
+						  select x)
+			.First();
+
+		var contentItems = content.Descendants("p").ToArray();
+
+		var working = new List<Content>();
+
+		foreach (var contentItem in contentItems)
+		{
+			var item = contentItem;
+			var innerDescendants = contentItem.DescendantNodes().Where(n => // Get all nodes
+																		   n.Parent == item // Remove children of children
+																		   && (n as XText)?.Value.Trim() != string.Empty) // Remove any whitespace text elements
+											  .ToArray();
+
+			if (
+				innerDescendants.Length != 4 // Proper content links have 4 elements
+				|| innerDescendants.Where(d => (d as XElement)?.Name == "a").ToArray().Length != 3 // Three of them are <a> elements
+				|| innerDescendants.Where(d => d.NodeType == XmlNodeType.Text).ToArray().Length != 1) // One is just text
+				continue; // If these requirements are not satisfied then skip to next element
+
+			// Get the first (and hopefully only) text element
+			var text = innerDescendants.Where(n => n.NodeType == XmlNodeType.Text).Cast<XText>().First();
+			// Get all <a> elements
+			var links = innerDescendants.Where(n => n.NodeType == XmlNodeType.Element && ((XElement)n).Name == XName.Get("a")).Cast<XElement>().ToArray();
+			// Get the text of the links
+			var linkText = links.Select(l => ((XText)l.DescendantNodes().First()).Value).ToArray();
+			// Get the href values of the links
+			var linkRefs = links.Select(l => l.Attributes().First(a => a.Name == XName.Get("href")).Value).ToArray();
+
+			// Get the video number
+			var videoNumber = linkText[0].Remove(0, 6);
+
+			var videoLink = linkRefs[0]; // Get the video URL
+			var practiceLink = linkRefs[1]; // Get the practice question URL
+			var textbookLink = linkRefs[2]; // Get the textbook exercise URL
+
+			var topic = text.Value.Trim(); // the topic should be the value of text, just remember to remove the whitespace at the end!
+
+			// Create a Content() and add it to working
+			working.Add(new Content(videoNumber, topic, new Uri(videoLink), new Uri(practiceLink), new Uri(textbookLink)));
+		}
+
+		return working.ToArray();
+	}
+
+	private class Content
+	{
+		public string Number;
+		public string Topic;
+		public Uri VideoUri;
+		public Uri PracticeQuestionsUri;
+		public Uri TextbookExerciseUri;
+
+		public Content(string number, string topic, Uri videoUri, Uri practiceQuestionsUri, Uri textbookExerciseUri)
+		{
+			Number = number;
+			Topic = topic;
+			VideoUri = videoUri;
+			PracticeQuestionsUri = practiceQuestionsUri;
+			TextbookExerciseUri = textbookExerciseUri;
+		}
+	}
+
+}
