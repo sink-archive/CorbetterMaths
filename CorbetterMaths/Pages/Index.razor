@@ -2,7 +2,6 @@
 @using System.Text
 @using System.Xml
 @using System.Xml.Linq
-@using System.Resources
 @inject HttpClient Http
 
 <h1 class="ui header">Cor<span style="color: red">better</span> Maths</h1>
@@ -24,37 +23,82 @@
 else
 {
 	<div class="ui input" style="margin-right: 1rem">
-		<input type="text" placeholder="Enter a video number" @bind="_searchTerm">
+		<input type="text" placeholder="Enter a video number" @bind="_searchNumber">
 	</div>
 
-	<button class="ui icon labeled button" @onclick="Search">
-		<i class="search icon" />
-		Search Content
+	<button class="ui icon labeled button" @onclick="SearchByNum">
+		<i class="search icon"/>
+		Search Content by Number
 	</button>
 
-	if (_itemToShow != null)
-	{
-		<p>Here's your delicious maths video, served hot and fresh from the oven.</p>
+	<div class="ui input" style="margin-right: 1rem">
+		<input type="text" placeholder="Enter a topic" @bind="_searchString">
+	</div>
 
-		<div class="ui card">
-			<div class="content">
-				<div class="header">@_itemToShow.Topic</div>
-				<div class="meta">Video #@_itemToShow.Number</div>
-				<div class="description">
-					<div class="ui icon buttons">
-						<a class="ui button" data-tooltip="Watch Video" href="@_itemToShow.VideoUri" target="_blank">
-							<i class="play icon"/>
-						</a>
-						<a class="ui button" data-tooltip="Practice Questions" href="@_itemToShow.PracticeQuestionsUri" download>
-							<i class="pencil alternate icon"/>
-						</a>
-						<a class="ui button" data-tooltip="Textbook Exercise" href="@_itemToShow.TextbookExerciseUri" download>
-							<i class="book open icon"/>
-						</a>
+	<button class="ui icon labeled button" @onclick="SearchByTopic">
+		<i class="search icon"/>
+		Search Content by Topic
+	</button>
+
+	if (HasSearched)
+	{
+		if (_itemToShow != null)
+		{
+			<p>Here's your delicious maths video, served hot and fresh from the oven.</p>
+
+			<div class="ui card">
+				<div class="content">
+					<div class="header">@_itemToShow.Topic</div>
+					<div class="meta">Video #@_itemToShow.Number</div>
+					<div class="description">
+						<div class="ui icon buttons">
+							<a class="ui button" data-tooltip="Watch Video" href="@_itemToShow.VideoUri" target="_blank">
+								<i class="play icon"/>
+							</a>
+							<a class="ui button" data-tooltip="Practice Questions" href="@_itemToShow.PracticeQuestionsUri" download>
+								<i class="pencil alternate icon"/>
+							</a>
+							<a class="ui button" data-tooltip="Textbook Exercise" href="@_itemToShow.TextbookExerciseUri" download>
+								<i class="book open icon"/>
+							</a>
+						</div>
 					</div>
 				</div>
 			</div>
-		</div>
+		}
+		else if (_itemsToShow.Any())
+		{
+			<p>Here are your delicious maths videos, served hot and fresh from the oven.</p>
+
+			<div class="ui cards">
+				@foreach (var itemToShow in _itemsToShow)
+				{
+				<div class="ui card">
+					<div class="content">
+						<div class="header">@itemToShow.Topic</div>
+						<div class="meta">Video #@itemToShow.Number</div>
+						<div class="description">
+							<div class="ui icon buttons">
+								<a class="ui button" data-tooltip="Watch Video" href="@itemToShow.VideoUri" target="_blank">
+									<i class="play icon" />
+								</a>
+								<a class="ui button" data-tooltip="Practice Questions" href="@itemToShow.PracticeQuestionsUri" download>
+									<i class="pencil alternate icon" />
+								</a>
+								<a class="ui button" data-tooltip="Textbook Exercise" href="@itemToShow.TextbookExerciseUri" download>
+									<i class="book open icon" />
+								</a>
+							</div>
+						</div>
+					</div>
+				</div>
+				}
+			</div>
+		}
+		else
+		{
+			<p>Aw crumbs. Your search turned up nothing!</p>
+		}
 	}
 }
 
@@ -62,18 +106,42 @@ else
 @code {
 
 #pragma warning disable 649 // it's assigned via @bind=""
-	private string _searchTerm;
+	private string _searchNumber;
+#pragma warning restore 649
+
+#pragma warning disable 649 // it's assigned via @bind=""
+	private string _searchString;
 #pragma warning restore 649
 
 	private Content _itemToShow;
 
-	private void Search() => _itemToShow = _content.FirstOrDefault(c => c.Number == _searchTerm)
-	                                       ?? new Content( // easter egg for people messing with me
-		                                          _searchTerm,
-		                                          "Completing the Square",
-		                                          "https://www.youtube.com/watch?v=zTieVfekCec",
-		                                          "/corbett-maths_completing-the-square_exercise.pdf",
-		                                          "/corbett-maths_completing-the-square_textbook.pdf");
+	private Content[] _itemsToShow;
+
+	private bool HasSearched;
+
+	private void SearchByNum()
+	{
+		HasSearched = true;
+
+		_itemsToShow = null;
+
+		_itemToShow = _content.FirstOrDefault(c => c.Number == _searchNumber)
+		              ?? new Content( // easter egg for people messing with me
+			                 _searchNumber,
+			                 "Completing the Square",
+			                 "https://www.youtube.com/watch?v=zTieVfekCec",
+			                 "/corbett-maths_completing-the-square_exercise.pdf",
+			                 "/corbett-maths_completing-the-square_textbook.pdf");
+	}
+
+	private void SearchByTopic()
+	{
+		HasSearched = true;
+
+		_itemToShow = null;
+
+		_itemsToShow = _content.Where(c => c.Topic.Contains(_searchString) || _searchString.Contains(c.Topic)).ToArray();
+	}
 
 	// Here be dragons; proceed at the risk of your own sanity
 
@@ -89,14 +157,14 @@ else
 	{
 		var xml = Majestic12ToXml.ConvertNodesToXml(Encoding.UTF8.GetBytes(html)).ToArray();
 
-		var elements = ((XElement)xml[0]).DescendantsAndSelf().ToArray();
+		var elements = ((XElement) xml[0]).DescendantsAndSelf().ToArray();
 
-		// ReSharper I really dont care right now
-		// ReSharper disable once PossibleNullReferenceException
+	// ReSharper I really dont care right now
+	// ReSharper disable once PossibleNullReferenceException
 		var content = (
-						  from x in elements
-						  where x.Attribute("class")?.Value == "entry-content"
-						  select x)
+			              from x in elements
+			              where x.Attribute("class")?.Value == "entry-content"
+			              select x)
 			.First();
 
 		var contentItems = content.Descendants("p").ToArray();
@@ -107,9 +175,9 @@ else
 		{
 			var item = contentItem;
 			var innerDescendants = contentItem.DescendantNodes().Where(n => // Get all nodes
-																		   n.Parent == item // Remove children of children
-																		   && (n as XText)?.Value.Trim() != string.Empty) // Remove any whitespace text elements
-											  .ToArray();
+				                                                           n.Parent == item // Remove children of children
+				                                                           && (n as XText)?.Value.Trim() != string.Empty) // Remove any whitespace text elements
+			                                  .ToArray();
 
 			if (
 				innerDescendants.Length != 4 // Proper content links have 4 elements
@@ -117,16 +185,16 @@ else
 				|| innerDescendants.Where(d => d.NodeType == XmlNodeType.Text).ToArray().Length != 1) // One is just text
 				continue; // If these requirements are not satisfied then skip to next element
 
-			// Get the first (and hopefully only) text element
+	// Get the first (and hopefully only) text element
 			var text = innerDescendants.Where(n => n.NodeType == XmlNodeType.Text).Cast<XText>().First();
-			// Get all <a> elements
-			var links = innerDescendants.Where(n => n.NodeType == XmlNodeType.Element && ((XElement)n).Name == XName.Get("a")).Cast<XElement>().ToArray();
-			// Get the text of the links
-			var linkText = links.Select(l => ((XText)l.DescendantNodes().First()).Value).ToArray();
-			// Get the href values of the links
+	// Get all <a> elements
+			var links = innerDescendants.Where(n => n.NodeType == XmlNodeType.Element && ((XElement) n).Name == XName.Get("a")).Cast<XElement>().ToArray();
+	// Get the text of the links
+			var linkText = links.Select(l => ((XText) l.DescendantNodes().First()).Value).ToArray();
+	// Get the href values of the links
 			var linkRefs = links.Select(l => l.Attributes().First(a => a.Name == XName.Get("href")).Value).ToArray();
 
-			// Get the video number
+	// Get the video number
 			var videoNumber = linkText[0].Remove(0, 6);
 
 			var videoLink = linkRefs[0]; // Get the video URL
@@ -135,7 +203,7 @@ else
 
 			var topic = text.Value.Trim(); // the topic should be the value of text, just remember to remove the whitespace at the end!
 
-			// Create a Content() and add it to working
+	// Create a Content() and add it to working
 			working.Add(new Content(videoNumber, topic, videoLink, practiceLink, textbookLink));
 		}
 
