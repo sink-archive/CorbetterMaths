@@ -65,9 +65,15 @@ else
 	private string _searchTerm;
 #pragma warning restore 649
 
-	private Content _itemToShow = null;
+	private Content _itemToShow;
 
-	private void Search() => _itemToShow = _content.First(c => c.Number == _searchTerm);
+	private void Search() => _itemToShow = _content.FirstOrDefault(c => c.Number == _searchTerm)
+	                                       ?? new Content( // easter egg for people messing with me
+		                                          _searchTerm,
+		                                          "Completing the Square",
+		                                          "https://www.youtube.com/watch?v=zTieVfekCec",
+		                                          "/corbett-maths_completing-the-square_exercise.pdf",
+		                                          "/corbett-maths_completing-the-square_textbook.pdf");
 
 	// Here be dragons; proceed at the risk of your own sanity
 
@@ -130,7 +136,7 @@ else
 			var topic = text.Value.Trim(); // the topic should be the value of text, just remember to remove the whitespace at the end!
 
 			// Create a Content() and add it to working
-			working.Add(new Content(videoNumber, topic, new Uri(videoLink), new Uri(practiceLink), new Uri(textbookLink)));
+			working.Add(new Content(videoNumber, topic, videoLink, practiceLink, textbookLink));
 		}
 
 		return working.ToArray();
@@ -140,11 +146,11 @@ else
 	{
 		public string Number;
 		public string Topic;
-		public Uri VideoUri;
-		public Uri PracticeQuestionsUri;
-		public Uri TextbookExerciseUri;
+		public string VideoUri;
+		public string PracticeQuestionsUri;
+		public string TextbookExerciseUri;
 
-		public Content(string number, string topic, Uri videoUri, Uri practiceQuestionsUri, Uri textbookExerciseUri)
+		public Content(string number, string topic, string videoUri, string practiceQuestionsUri, string textbookExerciseUri)
 		{
 			Number = number;
 			Topic = topic;
