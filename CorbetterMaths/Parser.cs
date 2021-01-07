@@ -6,31 +6,39 @@ using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Majestic12;
 
+// Code originally from StackOverflow, with some refactorings
+
 namespace CorbetterMaths
 {
 	public class Majestic12ToXml
 	{
+		private static readonly Regex StartsAsNumeric = new Regex(@"^[0-9]", RegexOptions.Compiled);
+
+		private static readonly Regex WeirdTag = new Regex(@"^<!\[.*\]>$"); // matches "<![if !supportEmptyParas]>"
+		private static readonly Regex AspnetPrecompiled = new Regex(@"^<%.*%>$"); // matches "<%@ ... %>"
+		private static readonly Regex ShortHtmlComment = new Regex(@"^<!-.*->$"); // matches "<!-Extra_Images->"
+
 		public static IEnumerable<XNode> ConvertNodesToXml(byte[] htmlAsBytes)
 		{
-			HTMLparser parser = OpenParser();
+			var parser = OpenParser();
 			parser.Init(htmlAsBytes);
 
 			var currentNode = new XElement("document");
 
-			HTMLchunk m12chunk = null;
+			HTMLchunk m12Chunk = null;
 
 			var xmlnsAttributeIndex = 0;
-			var originalHtml        = "";
+			var originalHtml        = string.Empty;
 
-			while ((m12chunk = parser.ParseNext()) != null)
+			while ((m12Chunk = parser.ParseNext()) != null)
 				try
 				{
-					Debug.Assert(!m12chunk.bHashMode); // popular default for Majestic-12 setting
+					Debug.Assert(!m12Chunk.bHashMode); // popular default for Majestic-12 setting
 
 					XNode    newNode        = null;
 					XElement newNodesParent = null;
 
-					switch (m12chunk.oType)
+					switch (m12Chunk.oType)
 					{
 						case HTMLchunkType.OpenTag:
 
@@ -38,11 +46,11 @@ namespace CorbetterMaths
 							// except when the new tag implies the closure of 
 							// some number of ancestor tags.
 
-							newNode = ParseTagNode(m12chunk, originalHtml, ref xmlnsAttributeIndex);
+							newNode = ParseTagNode(m12Chunk, originalHtml, ref xmlnsAttributeIndex);
 
 							if (newNode != null)
 							{
-								currentNode = FindParentOfNewNode(m12chunk, originalHtml, currentNode);
+								currentNode = FindParentOfNewNode(m12Chunk, originalHtml, currentNode);
 
 								newNodesParent = currentNode;
 
@@ -55,13 +63,13 @@ namespace CorbetterMaths
 
 						case HTMLchunkType.CloseTag:
 
-							if (m12chunk.bEndClosure)
+							if (m12Chunk.bEndClosure)
 							{
-								newNode = ParseTagNode(m12chunk, originalHtml, ref xmlnsAttributeIndex);
+								newNode = ParseTagNode(m12Chunk, originalHtml, ref xmlnsAttributeIndex);
 
 								if (newNode != null)
 								{
-									currentNode = FindParentOfNewNode(m12chunk, originalHtml, currentNode);
+									currentNode = FindParentOfNewNode(m12Chunk, originalHtml, currentNode);
 
 									newNodesParent = currentNode;
 									newNodesParent.Add(newNode);
@@ -71,9 +79,9 @@ namespace CorbetterMaths
 							{
 								var nodeToClose = currentNode;
 
-								var m12chunkCleanedTag = CleanupTagName(m12chunk.sTag, originalHtml);
+								var m12ChunkCleanedTag = CleanupTagName(m12Chunk.sTag, originalHtml);
 
-								while (nodeToClose != null && nodeToClose.Name.LocalName != m12chunkCleanedTag)
+								while (nodeToClose != null && nodeToClose.Name.LocalName != m12ChunkCleanedTag)
 									nodeToClose = nodeToClose.Parent;
 
 								if (nodeToClose != null)
@@ -95,10 +103,10 @@ namespace CorbetterMaths
 
 							newNodesParent = currentNode;
 
-							if (m12chunk.sTag == "!--")
-								newNode = new XComment(m12chunk.oHTML);
-							else if (m12chunk.sTag == "![CDATA[")
-								newNode = new XCData(m12chunk.oHTML);
+							if (m12Chunk.sTag == "!--")
+								newNode = new XComment(m12Chunk.oHTML);
+							else if (m12Chunk.sTag == "![CDATA[")
+								newNode = new XCData(m12Chunk.oHTML);
 							else
 								throw new Exception("Unrecognized comment sTag");
 
@@ -108,10 +116,7 @@ namespace CorbetterMaths
 
 						case HTMLchunkType.Text:
 
-							currentNode.Add(m12chunk.oHTML);
-							break;
-
-						default:
+							currentNode.Add(m12Chunk.oHTML);
 							break;
 					}
 				}
@@ -120,9 +125,9 @@ namespace CorbetterMaths
 					var wrappedE = new Exception("Error using Majestic12.HTMLChunk, reason: " + e.Message, e);
 
 					// the original html is copied for tracing/debugging purposes
-					originalHtml = new string(htmlAsBytes.Skip(m12chunk.iChunkOffset)
-					                                     .Take(m12chunk.iChunkLength)
-					                                     .Select(B => (char) B).ToArray());
+					originalHtml = new string(htmlAsBytes.Skip(m12Chunk.iChunkOffset)
+					                                     .Take(m12Chunk.iChunkLength)
+					                                     .Select(b => (char) b).ToArray());
 
 					wrappedE.Data.Add("source", originalHtml);
 
@@ -135,10 +140,10 @@ namespace CorbetterMaths
 			return currentNode.Nodes();
 		}
 
-		private static XElement FindParentOfNewNode(HTMLchunk m12chunk, string originalHtml,
+		private static XElement FindParentOfNewNode(HTMLchunk m12Chunk, string originalHtml,
 		                                            XElement  nextPotentialParent)
 		{
-			var m12chunkCleanedTag = CleanupTagName(m12chunk.sTag, originalHtml);
+			var m12ChunkCleanedTag = CleanupTagName(m12Chunk.sTag, originalHtml);
 
 			XElement discoveredParent = null;
 
@@ -151,39 +156,46 @@ namespace CorbetterMaths
 				ancestor = ancestor.Parent;
 			}
 
-			// Check if the new tag implies a previous tag was closed.
-			if ("form" == m12chunkCleanedTag)
-				discoveredParent = ancestors
-				                  .Where(XE => m12chunkCleanedTag == XE.Name)
-				                  .Take(1)
-				                  .Select(XE => XE.Parent)
-				                  .FirstOrDefault();
-			else if ("td" == m12chunkCleanedTag)
-				discoveredParent = ancestors
-				                  .TakeWhile(XE => "tr" != XE.Name)
-				                  .Where(XE => m12chunkCleanedTag == XE.Name)
-				                  .Take(1)
-				                  .Select(XE => XE.Parent)
-				                  .FirstOrDefault();
-			else if ("tr" == m12chunkCleanedTag)
-				discoveredParent = ancestors
-				                  .TakeWhile(XE => !("table" == XE.Name
-				                                  || "thead" == XE.Name
-				                                  || "tbody" == XE.Name
-				                                  || "tfoot" == XE.Name))
-				                  .Where(XE => m12chunkCleanedTag == XE.Name)
-				                  .Take(1)
-				                  .Select(XE => XE.Parent)
-				                  .FirstOrDefault();
-			else if ("thead" == m12chunkCleanedTag
-			      || "tbody" == m12chunkCleanedTag
-			      || "tfoot" == m12chunkCleanedTag)
-				discoveredParent = ancestors
-				                  .TakeWhile(XE => "table" != XE.Name)
-				                  .Where(XE => m12chunkCleanedTag == XE.Name)
-				                  .Take(1)
-				                  .Select(XE => XE.Parent)
-				                  .FirstOrDefault();
+			switch (m12ChunkCleanedTag)
+			{
+				// Check if the new tag implies a previous tag was closed.
+				case "form":
+					discoveredParent = ancestors
+					                  .Where(xe => m12ChunkCleanedTag == xe.Name)
+					                  .Take(1)
+					                  .Select(xe => xe.Parent)
+					                  .FirstOrDefault();
+					break;
+				case "td":
+					discoveredParent = ancestors
+					                  .TakeWhile(xe => xe.Name        != "tr")
+					                  .Where(xe => m12ChunkCleanedTag == xe.Name)
+					                  .Take(1)
+					                  .Select(xe => xe.Parent)
+					                  .FirstOrDefault();
+					break;
+				case "tr":
+					discoveredParent = ancestors
+					                  .TakeWhile(xe => !(xe.Name == "table"
+					                                  || xe.Name == "thead"
+					                                  || xe.Name == "tbody"
+					                                  || xe.Name != "tfoot"))
+					                  .Where(xe => m12ChunkCleanedTag == xe.Name)
+					                  .Take(1)
+					                  .Select(xe => xe.Parent)
+					                  .FirstOrDefault();
+					break;
+				case "thead":
+				case "tbody":
+				case "tfoot":
+					discoveredParent = ancestors
+					                  .TakeWhile(xe => xe.Name        != "table")
+					                  .Where(xe => m12ChunkCleanedTag == xe.Name)
+					                  .Take(1)
+					                  .Select(xe => xe.Parent)
+					                  .FirstOrDefault();
+					break;
+			}
 
 			return discoveredParent ?? nextPotentialParent;
 		}
@@ -192,15 +204,13 @@ namespace CorbetterMaths
 		{
 			var tagName = originalName;
 
-			tagName = tagName.TrimStart(new char[] {'?'}); // for nodes <?xml >
+			tagName = tagName.TrimStart(new[] {'?'}); // for nodes <?xml >
 
 			if (tagName.Contains(':'))
 				tagName = tagName.Substring(tagName.LastIndexOf(':') + 1);
 
 			return tagName;
 		}
-
-		private static readonly Regex _startsAsNumeric = new Regex(@"^[0-9]", RegexOptions.Compiled);
 
 		private static bool TryCleanupAttributeName(string originalName, ref int xmlnsIndex, out string result)
 		{
@@ -210,7 +220,7 @@ namespace CorbetterMaths
 			if (string.IsNullOrEmpty(originalName))
 				return false;
 
-			if (_startsAsNumeric.IsMatch(originalName))
+			if (StartsAsNumeric.IsMatch(originalName))
 				return false;
 
 			//
@@ -218,8 +228,7 @@ namespace CorbetterMaths
 			//
 			if (attributeName.ToLower().Equals("xmlns"))
 			{
-				attributeName = "xmlns_" + xmlnsIndex.ToString();
-				;
+				attributeName = "xmlns_" + xmlnsIndex;
 				xmlnsIndex++;
 			}
 			else
@@ -230,7 +239,7 @@ namespace CorbetterMaths
 				//
 				// trim trailing \"
 				//
-				attributeName = attributeName.TrimEnd(new char[] {'\"'});
+				attributeName = attributeName.TrimEnd(new[] {'\"'});
 
 				attributeName = attributeName.Replace(":", "_");
 			}
@@ -240,70 +249,66 @@ namespace CorbetterMaths
 			return true;
 		}
 
-		private static readonly Regex _weirdTag = new Regex(@"^<!\[.*\]>$"); // matches "<![if !supportEmptyParas]>"
-		private static readonly Regex _aspnetPrecompiled = new Regex(@"^<%.*%>$"); // matches "<%@ ... %>"
-		private static readonly Regex _shortHtmlComment = new Regex(@"^<!-.*->$"); // matches "<!-Extra_Images->"
-
-		private static XElement ParseTagNode(HTMLchunk m12chunk, string originalHtml, ref int xmlnsIndex)
+		private static XElement ParseTagNode(HTMLchunk m12Chunk, string originalHtml, ref int xmlnsIndex)
 		{
-			if (string.IsNullOrEmpty(m12chunk.sTag))
+			if (string.IsNullOrEmpty(m12Chunk.sTag))
 			{
-				if (m12chunk.sParams.Length > 0 && m12chunk.sParams[0].ToLower().Equals("doctype"))
+				if (m12Chunk.sParams.Length > 0 && m12Chunk.sParams[0].ToLower().Equals("doctype"))
 					return new XElement("doctype");
 
-				if (_weirdTag.IsMatch(originalHtml))
+				if (WeirdTag.IsMatch(originalHtml))
 					return new XElement("REMOVED_weirdBlockParenthesisTag");
 
-				if (_aspnetPrecompiled.IsMatch(originalHtml))
+				if (AspnetPrecompiled.IsMatch(originalHtml))
 					return new XElement("REMOVED_ASPNET_PrecompiledDirective");
 
-				if (_shortHtmlComment.IsMatch(originalHtml))
+				if (ShortHtmlComment.IsMatch(originalHtml))
 					return new XElement("REMOVED_ShortHtmlComment");
 
 				// Nodes like "<br <br>" will end up with a m12chunk.sTag==""...  We discard these nodes.
 				return null;
 			}
 
-			var tagName = CleanupTagName(m12chunk.sTag, originalHtml);
+			var tagName = CleanupTagName(m12Chunk.sTag, originalHtml);
 
 			var result = new XElement(tagName);
 
 			var attributes = new List<XAttribute>();
 
-			for (var i = 0; i < m12chunk.iParams; i++)
+			for (var i = 0; i < m12Chunk.iParams; i++)
 			{
-				if (m12chunk.sParams[i] == "<!--")
+				if (m12Chunk.sParams[i] == "<!--")
 				{
 					// an HTML comment was embedded within a tag.  This comment and its contents
 					// will be interpreted as attributes by Majestic-12... skip this attributes
-					for (; i < m12chunk.iParams; i++)
-						if (m12chunk.sTag == "--" || m12chunk.sTag == "-->")
+					for (; i < m12Chunk.iParams; i++)
+						if (m12Chunk.sTag == "--" || m12Chunk.sTag == "-->")
 							break;
 
 					continue;
 				}
 
-				if (m12chunk.sParams[i] == "?" && string.IsNullOrEmpty(m12chunk.sValues[i]))
+				if (m12Chunk.sParams[i] == "?" && string.IsNullOrEmpty(m12Chunk.sValues[i]))
 					continue;
 
-				var attributeName = m12chunk.sParams[i];
+				var attributeName = m12Chunk.sParams[i];
 
 				if (!TryCleanupAttributeName(attributeName, ref xmlnsIndex, out attributeName))
 					continue;
 
-				attributes.Add(new XAttribute(attributeName, m12chunk.sValues[i]));
+				attributes.Add(new XAttribute(attributeName, m12Chunk.sValues[i]));
 			}
 
 			// If attributes are duplicated with different values, we complain.
 			// If attributes are duplicated with the same value, we remove all but 1.
-			var duplicatedAttributes = attributes.GroupBy(A => A.Name).Where(G => G.Count() > 1);
+			var duplicatedAttributes = attributes.GroupBy(a => a.Name).Where(g => g.Count() > 1);
 
 			foreach (var duplicatedAttribute in duplicatedAttributes)
 			{
-				if (duplicatedAttribute.GroupBy(DA => DA.Value).Count() > 1)
+				if (duplicatedAttribute.GroupBy(da => da.Value).Count() > 1)
 					throw new Exception("Attribute value was given different values");
 
-				attributes.RemoveAll(A => A.Name == duplicatedAttribute.Key);
+				attributes.RemoveAll(a => a.Name == duplicatedAttribute.Key);
 				attributes.Add(duplicatedAttribute.First());
 			}
 
@@ -314,7 +319,7 @@ namespace CorbetterMaths
 
 		private static HTMLparser OpenParser()
 		{
-			HTMLparser oP = new HTMLparser();
+			var oP = new HTMLparser();
 
 			// The code+comments in this function are from the Majestic-12 sample documentation.
 
