@@ -138,7 +138,7 @@ else
 
 		_itemsToShow = null;
 
-		_itemToShow = _content.FirstOrDefault(c => c.Number == _searchNumber)
+		_itemToShow = _content.ElementAtOrDefault(_contentIndex.FirstOrDefault(c => c.Key == _searchNumber).Value)
 					  ?? new Content( // easter egg for people messing with me
 							 _searchNumber,
 							 "Completing the Square",
@@ -173,14 +173,24 @@ else
 		foreach (var contentItem in _content) _stringMatcher.Add(contentItem.Topic, contentItem);
 	}
 
-	// Here be dragons; proceed at the risk of your own sanity
-
 	private Content[] _content = new Content[0];
+
+	private Dictionary<string, int> _contentIndex = new Dictionary<string, int>();
+
+	private void BuildIndex()
+	{
+		for (var i = 0; i < _content.Length; i++) _contentIndex.Add(_content[i].Number, i);
+	}
+
+
+
+	// Here be dragons; proceed at the risk of your own sanity
 
 	protected override async Task OnInitializedAsync()
 	{
 		await ProcessData();
 		InitFuzzyStringMatcher();
+		BuildIndex();
 	}
 
 	private async Task ProcessData() => _content = ParseContentPage(await GetContentList());
