@@ -10,7 +10,7 @@ using Majestic12;
 
 namespace CorbetterMaths
 {
-	public class Majestic12ToXml
+	public static class Majestic12ToXml
 	{
 		private static readonly Regex StartsAsNumeric = new Regex(@"^[0-9]", RegexOptions.Compiled);
 
