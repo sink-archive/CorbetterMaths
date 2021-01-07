@@ -2,6 +2,7 @@
 @using System.Text
 @using System.Xml
 @using System.Xml.Linq
+@using FastFuzzyStringMatcher
 @inject HttpClient Http
 
 <h1 class="ui header">Cor<span style="color: red">better</span> Maths</h1>
@@ -27,7 +28,7 @@ else
 	</div>
 
 	<button class="ui icon labeled button" @onclick="SearchByNum">
-		<i class="search icon"/>
+		<i class="search icon" />
 		Search Content by Number
 	</button>
 
@@ -36,11 +37,11 @@ else
 	</div>
 
 	<button class="ui icon labeled button" @onclick="SearchByTopic">
-		<i class="search icon"/>
+		<i class="search icon" />
 		Search Content by Topic
 	</button>
 
-	if (HasSearched)
+	if (_hasSearched)
 	{
 		if (_itemToShow != null)
 		{
@@ -53,47 +54,53 @@ else
 					<div class="description">
 						<div class="ui icon buttons">
 							<a class="ui button" data-tooltip="Watch Video" href="@_itemToShow.VideoUri" target="_blank">
-								<i class="play icon"/>
+								<i class="play icon" />
 							</a>
 							<a class="ui button" data-tooltip="Practice Questions" href="@_itemToShow.PracticeQuestionsUri" download>
-								<i class="pencil alternate icon"/>
+								<i class="pencil alternate icon" />
 							</a>
 							<a class="ui button" data-tooltip="Textbook Exercise" href="@_itemToShow.TextbookExerciseUri" download>
-								<i class="book open icon"/>
+								<i class="book open icon" />
 							</a>
 						</div>
 					</div>
 				</div>
 			</div>
 		}
-		else if (_itemsToShow.Any())
+		else if (_itemsToShow != null && _itemsToShow.Any())
 		{
 			<p>Here are your delicious maths videos, served hot and fresh from the oven.</p>
 
 			<div class="ui cards">
 				@foreach (var itemToShow in _itemsToShow)
 				{
-				<div class="ui card">
-					<div class="content">
-						<div class="header">@itemToShow.Topic</div>
-						<div class="meta">Video #@itemToShow.Number</div>
-						<div class="description">
-							<div class="ui icon buttons">
-								<a class="ui button" data-tooltip="Watch Video" href="@itemToShow.VideoUri" target="_blank">
-									<i class="play icon" />
-								</a>
-								<a class="ui button" data-tooltip="Practice Questions" href="@itemToShow.PracticeQuestionsUri" download>
-									<i class="pencil alternate icon" />
-								</a>
-								<a class="ui button" data-tooltip="Textbook Exercise" href="@itemToShow.TextbookExerciseUri" download>
-									<i class="book open icon" />
-								</a>
+					<div class="ui card">
+						<div class="content">
+							<div class="header">@itemToShow.AssociatedData.Topic</div>
+							<div class="meta">Video #@itemToShow.AssociatedData.Number, @MathF.Round(itemToShow.MatchPercentage, 1)% match</div>
+							<div class="description">
+								<div class="ui icon buttons">
+									<a class="ui button" data-tooltip="Watch Video" href="@itemToShow.AssociatedData.VideoUri" target="_blank">
+										<i class="play icon" />
+									</a>
+									<a class="ui button" data-tooltip="Practice Questions" href="@itemToShow.AssociatedData.PracticeQuestionsUri" download>
+										<i class="pencil alternate icon" />
+									</a>
+									<a class="ui button" data-tooltip="Textbook Exercise" href="@itemToShow.AssociatedData.TextbookExerciseUri" download>
+										<i class="book open icon" />
+									</a>
+								</div>
 							</div>
 						</div>
 					</div>
-				</div>
 				}
 			</div>
+			<p>
+				Not what you're looking for? Click
+				<a @onclick="SearchByTopicSimple" style="cursor: pointer">here</a>
+				for the fallback search system. The fallback search system does not
+				allow lenience for typos but may find more relevant content.
+			</p>
 		}
 		else
 		{
@@ -113,41 +120,68 @@ else
 	private string _searchString;
 #pragma warning restore 649
 
+	private StringMatcher<Content> _stringMatcher;
+
 	private Content _itemToShow;
 
-	private Content[] _itemsToShow;
+	private SearchResult<Content>[] _itemsToShow;
 
-	private bool HasSearched;
+	private int _searchLenience = 15;
+
+	private float _searchThreshold = 30;
+
+	private bool _hasSearched;
 
 	private void SearchByNum()
 	{
-		HasSearched = true;
+		_hasSearched = true;
 
 		_itemsToShow = null;
 
 		_itemToShow = _content.FirstOrDefault(c => c.Number == _searchNumber)
-		              ?? new Content( // easter egg for people messing with me
-			                 _searchNumber,
-			                 "Completing the Square",
-			                 "https://www.youtube.com/watch?v=zTieVfekCec",
-			                 "/corbett-maths_completing-the-square_exercise.pdf",
-			                 "/corbett-maths_completing-the-square_textbook.pdf");
+					  ?? new Content( // easter egg for people messing with me
+							 _searchNumber,
+							 "Completing the Square",
+							 "https://www.youtube.com/watch?v=zTieVfekCec",
+							 "/corbett-maths_completing-the-square_exercise.pdf",
+							 "/corbett-maths_completing-the-square_textbook.pdf");
 	}
 
 	private void SearchByTopic()
 	{
-		HasSearched = true;
+		_hasSearched = true;
 
 		_itemToShow = null;
 
-		_itemsToShow = _content.Where(c => c.Topic.Contains(_searchString) || _searchString.Contains(c.Topic)).ToArray();
+		_itemsToShow = _stringMatcher.Search(_searchString, _searchLenience).Where(r => r.MatchPercentage >= _searchThreshold).ToArray();
+
+		if (!_itemsToShow.Any()) SearchByTopicSimple();
+	}
+
+	private void SearchByTopicSimple()
+	{
+		_hasSearched = true;
+
+		_itemToShow = null;
+
+		_itemsToShow = _content.Where(c => c.Topic.Contains(_searchString)).Select(c => new SearchResult<Content>(_searchString, c, 0)).ToArray();
+	}
+
+	private void InitFuzzyStringMatcher()
+	{
+		_stringMatcher = new StringMatcher<Content>();
+		foreach (var contentItem in _content) _stringMatcher.Add(contentItem.Topic, contentItem);
 	}
 
 	// Here be dragons; proceed at the risk of your own sanity
 
 	private Content[] _content = new Content[0];
 
-	protected override async Task OnInitializedAsync() => await ProcessData();
+	protected override async Task OnInitializedAsync()
+	{
+		await ProcessData();
+		InitFuzzyStringMatcher();
+	}
 
 	private async Task ProcessData() => _content = ParseContentPage(await GetContentList());
 
@@ -157,14 +191,14 @@ else
 	{
 		var xml = Majestic12ToXml.ConvertNodesToXml(Encoding.UTF8.GetBytes(html)).ToArray();
 
-		var elements = ((XElement) xml[0]).DescendantsAndSelf().ToArray();
+		var elements = ((XElement)xml[0]).DescendantsAndSelf().ToArray();
 
-	// ReSharper I really dont care right now
-	// ReSharper disable once PossibleNullReferenceException
+		// ReSharper I really dont care right now
+		// ReSharper disable once PossibleNullReferenceException
 		var content = (
-			              from x in elements
-			              where x.Attribute("class")?.Value == "entry-content"
-			              select x)
+						  from x in elements
+						  where x.Attribute("class")?.Value == "entry-content"
+						  select x)
 			.First();
 
 		var contentItems = content.Descendants("p").ToArray();
@@ -175,9 +209,9 @@ else
 		{
 			var item = contentItem;
 			var innerDescendants = contentItem.DescendantNodes().Where(n => // Get all nodes
-				                                                           n.Parent == item // Remove children of children
-				                                                           && (n as XText)?.Value.Trim() != string.Empty) // Remove any whitespace text elements
-			                                  .ToArray();
+																		   n.Parent == item // Remove children of children
+																		   && (n as XText)?.Value.Trim() != string.Empty) // Remove any whitespace text elements
+											  .ToArray();
 
 			if (
 				innerDescendants.Length != 4 // Proper content links have 4 elements
@@ -185,16 +219,16 @@ else
 				|| innerDescendants.Where(d => d.NodeType == XmlNodeType.Text).ToArray().Length != 1) // One is just text
 				continue; // If these requirements are not satisfied then skip to next element
 
-	// Get the first (and hopefully only) text element
+			// Get the first (and hopefully only) text element
 			var text = innerDescendants.Where(n => n.NodeType == XmlNodeType.Text).Cast<XText>().First();
-	// Get all <a> elements
-			var links = innerDescendants.Where(n => n.NodeType == XmlNodeType.Element && ((XElement) n).Name == XName.Get("a")).Cast<XElement>().ToArray();
-	// Get the text of the links
-			var linkText = links.Select(l => ((XText) l.DescendantNodes().First()).Value).ToArray();
-	// Get the href values of the links
+			// Get all <a> elements
+			var links = innerDescendants.Where(n => n.NodeType == XmlNodeType.Element && ((XElement)n).Name == XName.Get("a")).Cast<XElement>().ToArray();
+			// Get the text of the links
+			var linkText = links.Select(l => ((XText)l.DescendantNodes().First()).Value).ToArray();
+			// Get the href values of the links
 			var linkRefs = links.Select(l => l.Attributes().First(a => a.Name == XName.Get("href")).Value).ToArray();
 
-	// Get the video number
+			// Get the video number
 			var videoNumber = linkText[0].Remove(0, 6);
 
 			var videoLink = linkRefs[0]; // Get the video URL
@@ -203,7 +237,7 @@ else
 
 			var topic = text.Value.Trim(); // the topic should be the value of text, just remember to remove the whitespace at the end!
 
-	// Create a Content() and add it to working
+			// Create a Content() and add it to working
 			working.Add(new Content(videoNumber, topic, videoLink, practiceLink, textbookLink));
 		}
 
