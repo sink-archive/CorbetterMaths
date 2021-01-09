@@ -42,8 +42,8 @@ namespace CorbetterMaths
 					{
 						case HTMLchunkType.OpenTag:
 
-							// Tags are added as a child to the current tag, 
-							// except when the new tag implies the closure of 
+							// Tags are added as a child to the current tag,
+							// except when the new tag implies the closure of
 							// some number of ancestor tags.
 
 							newNode = ParseTagNode(m12Chunk, originalHtml, ref xmlnsAttributeIndex);
@@ -333,7 +333,7 @@ namespace CorbetterMaths
 			// When TRUE (and its default) tag params will be added to hashtable HTMLchunk (object).oParams
 			oP.SetChunkHashMode(false);
 
-			// if you set this to true then original parsed HTML for given chunk will be kept - 
+			// if you set this to true then original parsed HTML for given chunk will be kept -
 			// this will reduce performance somewhat, but may be desireable in some cases where
 			// reconstruction of HTML may be necessary
 			oP.bKeepRawHTML = false;
@@ -344,7 +344,7 @@ namespace CorbetterMaths
 			// need to do Entity encoding or same string may fail later
 			oP.bDecodeEntities = true;
 
-			// we have option to keep most entities as is - only replace stuff like &nbsp; 
+			// we have option to keep most entities as is - only replace stuff like &nbsp;
 			// this is called Mini Entities mode - it is handy when HTML will need
 			// to be re-created after it was parsed, though in this case really
 			// entities should not be parsed at all
@@ -361,7 +361,7 @@ namespace CorbetterMaths
 			// if true then comments will be extracted automatically
 			oP.bAutoKeepComments = true;
 
-			// if true then scripts will be extracted automatically: 
+			// if true then scripts will be extracted automatically:
 			oP.bAutoKeepScripts = true;
 
 			// if this option is true then whitespace before start of tag will be compressed to single

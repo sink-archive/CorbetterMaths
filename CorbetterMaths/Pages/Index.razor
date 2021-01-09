@@ -126,9 +126,9 @@ else
 
 	private SearchResult<Content>[] _itemsToShow;
 
-	private int _searchLenience = 15;
+	private readonly int _searchLenience = 15;
 
-	private float _searchThreshold = 30;
+	private readonly float _searchThreshold = 30;
 
 	private bool _hasSearched;
 
@@ -175,7 +175,7 @@ else
 
 	private Content[] _content = new Content[0];
 
-	private Dictionary<string, int> _contentIndex = new Dictionary<string, int>();
+	private readonly Dictionary<string, int> _contentIndex = new Dictionary<string, int>();
 
 	private void BuildIndex()
 	{
@@ -217,33 +217,29 @@ else
 
 		foreach (var contentItem in contentItems)
 		{
-			var item = contentItem;
 			var innerDescendants = contentItem.DescendantNodes().Where(n => // Get all nodes
-																		   n.Parent == item // Remove children of children
+																		   n.Parent == contentItem // Remove children of children
 																		   && (n as XText)?.Value.Trim() != string.Empty) // Remove any whitespace text elements
 											  .ToArray();
 
-			if (
-				innerDescendants.Length != 4 // Proper content links have 4 elements
-				|| innerDescendants.Where(d => (d as XElement)?.Name == "a").ToArray().Length != 3 // Three of them are <a> elements
-				|| innerDescendants.Where(d => d.NodeType == XmlNodeType.Text).ToArray().Length != 1) // One is just text
-				continue; // If these requirements are not satisfied then skip to next element
+			if (!IsValid(innerDescendants))
+				continue; // If the requirements are not satisfied then skip to next element
 
 			// Get the first (and hopefully only) text element
 			var text = innerDescendants.Where(n => n.NodeType == XmlNodeType.Text).Cast<XText>().First();
 			// Get all <a> elements
-			var links = innerDescendants.Where(n => n.NodeType == XmlNodeType.Element && ((XElement)n).Name == XName.Get("a")).Cast<XElement>().ToArray();
+			var links = innerDescendants.Where(n => n.NodeType == XmlNodeType.Element && ((XElement) n).Name == XName.Get("a")).Cast<XElement>().ToArray();
 			// Get the text of the links
-			var linkText = links.Select(l => ((XText)l.DescendantNodes().First()).Value).ToArray();
+			var linkText = links.Select(l => ((XText) l.DescendantNodes().First()).Value).ToArray();
 			// Get the href values of the links
 			var linkRefs = links.Select(l => l.Attributes().First(a => a.Name == XName.Get("href")).Value).ToArray();
 
 			// Get the video number
 			var videoNumber = linkText[0].Remove(0, 6);
 
-			var videoLink = linkRefs[0]; // Get the video URL
-			var practiceLink = linkRefs[1]; // Get the practice question URL
-			var textbookLink = linkRefs[2]; // Get the textbook exercise URL
+			var videoLink    = linkRefs[0]; // Get the video URL
+			var practiceLink = linkRefs.ElementAtOrDefault(1); // Get the practice question URL
+			var textbookLink = linkRefs.ElementAtOrDefault(2); // Get the textbook exercise URL
 
 			var topic = text.Value.Trim(); // the topic should be the value of text, just remember to remove the whitespace at the end!
 
@@ -254,13 +250,22 @@ else
 		return working.ToArray();
 	}
 
+	private static bool IsValid(IReadOnlyCollection<XNode> nodeDescendants) =>
+		nodeDescendants.Count >= 2 && nodeDescendants.Count <= 4                               // Make sure there's 2 - 4 descendants
+	 && nodeDescendants.Where(d => (d as XElement)?.Name == "a").ToArray().Length >= 1    // Make sure there's at least 1 link
+	 && nodeDescendants.Where(d => (d as XElement)?.Name == "a").ToArray().Length <= 3    // Make sure there's no more than 3 links
+	 && nodeDescendants.Any(d =>
+								(d as XElement)?.Name == "a"
+							&& ((d as XElement).FirstNode as XText).Value.Contains("Video"))   // One link must contain "Video"
+	 && nodeDescendants.Where(d => d.NodeType == XmlNodeType.Text).ToArray().Length == 1; // One is just text
+
 	private class Content
 	{
-		public string Number;
-		public string Topic;
-		public string VideoUri;
-		public string PracticeQuestionsUri;
-		public string TextbookExerciseUri;
+		public readonly string Number;
+		public readonly string Topic;
+		public readonly string VideoUri;
+		public readonly string PracticeQuestionsUri;
+		public readonly string TextbookExerciseUri;
 
 		public Content(string number, string topic, string videoUri, string practiceQuestionsUri, string textbookExerciseUri)
 		{
