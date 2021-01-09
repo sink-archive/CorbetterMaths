@@ -212,41 +212,23 @@ else
 
 		var contentItems = content.Descendants("p").ToArray();
 
-		var working = new List<Content>();
-
-		foreach (var contentItem in contentItems)
-		{
-			var innerDescendants = contentItem.DescendantNodes().Where(n => // Get all nodes
-																		   n.Parent == contentItem // Remove children of children
-																		   && (n as XText)?.Value.Trim() != string.Empty) // Remove any whitespace text elements
-											  .ToArray();
-
-			if (!IsValid(innerDescendants))
-				continue; // If the requirements are not satisfied then skip to next element
-
-			// Get the first (and hopefully only) text element
-			var text = innerDescendants.Where(n => n.NodeType == XmlNodeType.Text).Cast<XText>().First();
-			// Get all <a> elements
-			var links = innerDescendants.Where(n => n.NodeType == XmlNodeType.Element && ((XElement) n).Name == XName.Get("a")).Cast<XElement>().ToArray();
-			// Get the text of the links
-			var linkText = links.Select(l => ((XText) l.DescendantNodes().First()).Value).ToArray();
-			// Get the href values of the links
-			var linkRefs = links.Select(l => l.Attributes().First(a => a.Name == XName.Get("href")).Value).ToArray();
-
-			// Get the video number
-			var videoNumber = linkText[0].Remove(0, 6);
-
-			var videoLink    = linkRefs[0]; // Get the video URL
-			var practiceLink = linkRefs.ElementAtOrDefault(1); // Get the practice question URL
-			var textbookLink = linkRefs.ElementAtOrDefault(2); // Get the textbook exercise URL
-
-			var topic = text.Value.Trim(); // the topic should be the value of text, just remember to remove the whitespace at the end!
-
-			// Create a Content() and add it to working
-			working.Add(new Content(videoNumber, topic, videoLink, practiceLink, textbookLink));
-		}
-
-		return working.ToArray();
+		return (from contentItem in contentItems
+		        select contentItem.DescendantNodes().Where(n => // Get all nodes
+			                                                   n.Parent == contentItem // Remove children of children
+			                                                   && (n as XText)?.Value.Trim() != string.Empty) // Remove any whitespace text elements
+		                          .ToArray()
+		        into innerDescendants
+		        where IsValid(innerDescendants)
+		        let text = innerDescendants.Where(n => n.NodeType == XmlNodeType.Text).Cast<XText>().First()
+		        let links = innerDescendants.Where(n => n.NodeType == XmlNodeType.Element && ((XElement) n).Name == XName.Get("a")).Cast<XElement>().ToArray()
+		        let linkText = links.Select(l => ((XText) l.DescendantNodes().First()).Value).ToArray()
+		        let linkRefs = links.Select(l => l.Attributes().First(a => a.Name == XName.Get("href")).Value).ToArray()
+		        let videoNumber = linkText[0].Remove(0, 6)
+		        let videoLink = linkRefs[0]
+		        let practiceLink = linkRefs.ElementAtOrDefault(1)
+		        let textbookLink = linkRefs.ElementAtOrDefault(2)
+		        let topic = text.Value.Trim()
+		        select new Content(videoNumber, topic, videoLink, practiceLink, textbookLink)).ToArray();
 	}
 
 	private static bool IsValid(IReadOnlyCollection<XNode> nodeDescendants) =>
