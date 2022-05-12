@@ -17,6 +17,8 @@
 
   <ItemGroup>
     <PackageReference Include="FastFuzzyStringMatcher" Version="1.0.0" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.42" />
+    <PackageReference Include="HtmlAgilityPack.CssSelectors" Version="1.0.2" />
     <PackageReference Include="Majestic12HtmlParser" Version="3.1.4" />
   </ItemGroup>
 </Project>
