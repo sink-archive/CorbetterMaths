@@ -43,31 +43,7 @@ else
 
 	if (_hasSearched)
 	{
-		if (_itemToShow != null)
-		{
-			<p>Here's your delicious maths video, served hot and fresh from the oven.</p>
-
-			<div class="ui card">
-				<div class="content">
-					<div class="header">@_itemToShow.Topic</div>
-					<div class="meta">Video #@_itemToShow.Number</div>
-					<div class="description">
-						<div class="ui icon buttons">
-							<a class="ui button" data-tooltip="Watch Video" href="@_itemToShow.VideoUri" target="_blank">
-								<i class="play icon" />
-							</a>
-							<a class="ui button" data-tooltip="Practice Questions" href="@_itemToShow.PracticeQuestionsUri" download>
-								<i class="pencil alternate icon" />
-							</a>
-							<a class="ui button" data-tooltip="Textbook Exercise" href="@_itemToShow.TextbookExerciseUri" download>
-								<i class="book open icon" />
-							</a>
-						</div>
-					</div>
-				</div>
-			</div>
-		}
-		else if (_itemsToShow != null && _itemsToShow.Any())
+		if (_itemsToShow.Any())
 		{
 			<p>Here are your delicious maths videos, served hot and fresh from the oven.</p>
 
@@ -76,17 +52,17 @@ else
 				{
 					<div class="ui card">
 						<div class="content">
-							<div class="header">@itemToShow.AssociatedData.Topic</div>
-							<div class="meta">Video #@itemToShow.AssociatedData.Number, @MathF.Round(itemToShow.MatchPercentage, 1)% match</div>
+							<div class="header">@itemToShow.Topic</div>
+							<div class="meta">Video #@itemToShow.Number @(itemToShow.MatchPercent.HasValue ? $", {itemToShow.MatchPercent}% match" : "")</div>
 							<div class="description">
 								<div class="ui icon buttons">
-									<a class="ui button" data-tooltip="Watch Video" href="@itemToShow.AssociatedData.VideoUri" target="_blank">
+									<a class="ui button" data-tooltip="Watch Video" href="@itemToShow.VideoUri" target="_blank">
 										<i class="play icon" />
 									</a>
-									<a class="ui button" data-tooltip="Practice Questions" href="@itemToShow.AssociatedData.PracticeQuestionsUri" download>
+									<a class="ui button" data-tooltip="Practice Questions" href="@itemToShow.PracticeQuestionsUri" download>
 										<i class="pencil alternate icon" />
 									</a>
-									<a class="ui button" data-tooltip="Textbook Exercise" href="@itemToShow.AssociatedData.TextbookExerciseUri" download>
+									<a class="ui button" data-tooltip="Textbook Exercise" href="@itemToShow.TextbookExerciseUri" download>
 										<i class="book open icon" />
 									</a>
 								</div>
@@ -95,12 +71,6 @@ else
 					</div>
 				}
 			</div>
-			<p>
-				Not what you're looking for? Click
-				<a @onclick="SearchByTopicSimple" style="cursor: pointer">here</a>
-				for the fallback search system. The fallback search system does not
-				allow lenience for typos but may find more relevant content.
-			</p>
 		}
 		else
 		{
@@ -112,22 +82,20 @@ else
 @code {
 
 #pragma warning disable 649 // it's assigned via @bind=""
-	private string _searchNumber;
+	private string _searchNumber = "";
 #pragma warning restore 649
 
 #pragma warning disable 649 // it's assigned via @bind=""
-	private string _searchString;
+	private string _searchString = "";
 #pragma warning restore 649
 
-	private StringMatcher<Content> _stringMatcher;
+	private StringMatcher<Content> _stringMatcher = new();
 
-	private Content _itemToShow;
+	private Content[] _itemsToShow = Array.Empty<Content>();
 
-	private SearchResult<Content>[] _itemsToShow;
+	private const int _searchLenience = 15;
 
-	private readonly int _searchLenience = 15;
-
-	private readonly float _searchThreshold = 30;
+	private const float _searchThreshold = 30;
 
 	private bool _hasSearched;
 
@@ -135,50 +103,42 @@ else
 	{
 		_hasSearched = true;
 
-		_itemsToShow = null;
-
-		_itemToShow = _content.ElementAtOrDefault(_contentIndex.FirstOrDefault(c => c.Key == _searchNumber).Value)
-					  ?? new Content( // easter egg for people messing with me
-							 _searchNumber,
-							 "Completing the Square",
-							 "https://www.youtube.com/watch?v=zTieVfekCec",
-							 "/corbett-maths_completing-the-square_exercise.pdf",
-							 "/corbett-maths_completing-the-square_textbook.pdf");
+		_itemsToShow = _contentIndex.Where(c => c.Item1 == _searchNumber).Select(c => _content[c.Item2]).ToArray();
 	}
 
 	private void SearchByTopic()
 	{
 		_hasSearched = true;
 
-		_itemToShow = null;
+    var simpleResults = SearchByTopicSimple();
 
-		_itemsToShow = _stringMatcher.Search(_searchString, _searchLenience).Where(r => r.MatchPercentage >= _searchThreshold).ToArray();
+		var complexResults = _stringMatcher.Search(_searchString, _searchLenience).Where(r => r.MatchPercentage >= _searchThreshold).Select(c => 
+			new Content(c.AssociatedData.Number, c.AssociatedData.Topic, c.AssociatedData.VideoUri, c.AssociatedData.PracticeQuestionsUri, c.AssociatedData.TextbookExerciseUri, Convert.ToInt32(c.MatchPercentage))
+		);
 
-		if (!_itemsToShow.Any()) SearchByTopicSimple();
+		_itemsToShow = simpleResults.Concat(complexResults).ToArray();
 	}
 
-	private void SearchByTopicSimple()
+	private IEnumerable<Content> SearchByTopicSimple()
 	{
 		_hasSearched = true;
 
-		_itemToShow = null;
-
-		_itemsToShow = _content.Where(c => c.Topic.Contains(_searchString)).Select(c => new SearchResult<Content>(_searchString, c, 0)).ToArray();
+		return _content.Where(c => c.Topic.Contains(_searchString, StringComparison.CurrentCultureIgnoreCase));
 	}
 
 	private void InitFuzzyStringMatcher()
 	{
-		_stringMatcher = new StringMatcher<Content>();
-		foreach (var contentItem in _content) _stringMatcher.Add(contentItem.Topic, contentItem);
+		foreach (var contentItem in _content)
+			_stringMatcher.Add(contentItem.Topic, contentItem);
 	}
 
 	private Content[] _content = new Content[0];
 
-	private readonly Dictionary<string, int> _contentIndex = new Dictionary<string, int>();
+	private readonly List<(string, int)> _contentIndex = new();
 
 	private void BuildIndex()
 	{
-		for (var i = 0; i < _content.Length; i++) _contentIndex.Add(_content[i].Number, i);
+		for (var i = 0; i < _content.Length; i++) _contentIndex.Add((_content[i].Number, i));
 	}
 
 
@@ -228,34 +188,20 @@ else
 		        let practiceLink = linkRefs.ElementAtOrDefault(1)
 		        let textbookLink = linkRefs.ElementAtOrDefault(2)
 		        let topic = text.Value.Trim()
-		        select new Content(videoNumber, topic, videoLink, practiceLink, textbookLink)).ToArray();
+		        select new Content(videoNumber, topic, videoLink, practiceLink, textbookLink, null)).ToArray();
 	}
 
 	private static bool IsValid(IReadOnlyCollection<XNode> nodeDescendants) =>
 		nodeDescendants.Count >= 2 && nodeDescendants.Count <= 4                               // Make sure there's 2 - 4 descendants
 	 && nodeDescendants.Where(d => (d as XElement)?.Name == "a").ToArray().Length >= 1    // Make sure there's at least 1 link
 	 && nodeDescendants.Where(d => (d as XElement)?.Name == "a").ToArray().Length <= 3    // Make sure there's no more than 3 links
+// this is properly checked i promise
+#pragma warning disable 8602
 	 && nodeDescendants.Any(d =>
 								(d as XElement)?.Name == "a"
 							&& ((d as XElement).FirstNode as XText).Value.Contains("Video"))   // One link must contain "Video"
 	 && nodeDescendants.Where(d => d.NodeType == XmlNodeType.Text).ToArray().Length == 1; // One is just text
+#pragma warning restore 8602
 
-	private class Content
-	{
-		public readonly string Number;
-		public readonly string Topic;
-		public readonly string VideoUri;
-		public readonly string PracticeQuestionsUri;
-		public readonly string TextbookExerciseUri;
-
-		public Content(string number, string topic, string videoUri, string practiceQuestionsUri, string textbookExerciseUri)
-		{
-			Number = number;
-			Topic = topic;
-			VideoUri = videoUri;
-			PracticeQuestionsUri = practiceQuestionsUri;
-			TextbookExerciseUri = textbookExerciseUri;
-		}
-	}
-
+	private record Content(string Number, string Topic, string VideoUri, string PracticeQuestionsUri, string TextbookExerciseUri, int? MatchPercent);
 }
